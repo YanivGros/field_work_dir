@@ -1,4 +1,9 @@
 # This is a sample Python script.
+import datetime
+import itertools
+import os
+import time
+
 import keras.metrics
 import numpy as np
 import pandas as pd
@@ -8,84 +13,192 @@ from keras.models import Sequential
 from keras.layers import Dense
 import keras
 from keras.optimizers.optimizer_v2.adam import Adam
+from keras.utils import plot_model
+from keras.backend import clear_session
+from pandas import DataFrame
 
 from sklearn.model_selection import train_test_split
 
 from numpy.random import default_rng
 
-from data.data_crate import crate_data
+from data.data_crate import create_data
 
 rng = default_rng(seed=42)
+
+
+# Yuval
 # todo - add dipper (2 layers) networks and more layers.
 # todo - try 3,5,7 and 3,5,11 and 2,5,7 (multiply of those number).
 # todo - learn until near saturation and than swap.
 
+# TODO - to check if the NN memorize the data or not, i.e check if it can.
+# TODO - make sure all the data is unique.
+# TODO - start from one divider and than add more.
+# TODO - check what is minimal layers needed to succeed in validation.
+# TODO - check how that history is saved.
+# TODO - girvan newman algorithm
+
+def model_crate(num_inputs, layers):
+    model = Sequential()
+    if layers == 0:
+        model.add(Dense(1, input_dim=num_inputs, activation='sigmoid'))
+    else:
+        model.add(Dense(num_inputs, input_dim=num_inputs, activation='relu'))
+        for i in range(layers - 1):
+            model.add(Dense(num_inputs, activation='relu'))
+        model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss='binary_crossentropy', optimizer=Adam(), metrics=[keras.metrics.BinaryAccuracy()])
+    plot_model(model, to_file=f'model_{layers}_layers.png', show_shapes=True, show_layer_names=True)
+    return model
+
+
+def MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model: Sequential, layers, total_epochs_for_each_label=300, round_epoch=10):
+    cnt = 0
+    accuracy_all_train = []
+    accuracy_all_test = []
+    accuracy_train = {}
+    accuracy_test = {}
+    for divider in numbers_to_divide_by:
+        accuracy_train[divider] = []
+        accuracy_test[divider] = []
+    while cnt < total_epochs_for_each_label:
+        for j, number in enumerate(numbers_to_divide_by):
+            cur_train = y_train.iloc[:, j]
+            cur_test = y_test.iloc[:, j]
+            model.fit(X_train, cur_train, validation_data=[X_test, cur_test], epochs=round_epoch, verbose=0, shuffle=True,
+                      use_multiprocessing=True, workers=4)
+            accuracy_all_train.extend(model.history.history['binary_accuracy'])
+            accuracy_all_test.extend(model.history.history['val_binary_accuracy'])
+            accuracy_train[number].extend(model.history.history['binary_accuracy'])
+            accuracy_test[number].extend(model.history.history['val_binary_accuracy'])
+        cnt += round_epoch
+        print(f'epoch {cnt} out of {total_epochs_for_each_label}')
+    plt.plot(accuracy_all_train)
+    plt.title(
+        f'MVG accuracy train, layers {layers}, round epoch {round_epoch}  {numbers_to_divide_by}')
+    plt.show()
+    plt.plot(accuracy_all_test)
+    plt.title(
+        f'MVG accuracy test, layers {layers}, round epoch {round_epoch}  {numbers_to_divide_by}')
+    plt.show()
+    for divider in numbers_to_divide_by:
+        plt.plot(accuracy_train[divider], label=f'train {divider}')
+        plt.plot(accuracy_test[divider], label=f'test {divider}')
+        plt.title(f'MVG, layers {layers}, round epoch {round_epoch}, divider {divider}')
+        plt.legend()
+        # save fig in folder named by date
+        plt.savefig(f'MVG, layers {layers}, round epoch {round_epoch}, divider {divider}.png')
+        plt.show()
+    # run the algorithm on the model
+    # check if the algorithm found the correct number of dividers
+    # check if the algorithm found the correct dividers
+
+
+def model_to_wrighted_graph(model):
+    # get the weights of the model
+    # create a graph with the weights
+    # return the graph
+    model_weights = model.get_weights()
+
+
+def get_all_premonition(numbers, amount_of_elements):
+    combinations = list(itertools.combinations(numbers, amount_of_elements))
+    for i in range(len(combinations)):
+        combinations[i] = np.prod(combinations[i])
+    return combinations
+
+
+def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, layers, iterations=100):
+    accuracy_all_train = []
+    accuracy_all_test = []
+    cnt = 0
+    point_where_accuracy_is_09 = -1
+    while cnt < iterations:
+        model.fit(X_train, y_train, epochs=20, validation_data=(X_test, y_test), shuffle=True, use_multiprocessing=True, workers=4,
+                  verbose=0)
+        cnt += 20
+        accuracy_all_train.extend(model.history.history['binary_accuracy'])
+        accuracy_all_test.extend(model.history.history['val_binary_accuracy'])
+        # add the exact point where the accuracy is 0.9
+        if accuracy_all_test[-1] > 0.9 and point_where_accuracy_is_09 == -1:
+            for i in range(len(accuracy_all_test)):
+                if accuracy_all_test[i] > 0.9:
+                    point_where_accuracy_is_09 = i
+                    print(f'point where accuracy is 0.9 is {point_where_accuracy_is_09}')
+                    break
+        print(f'epoch {cnt} out of {iterations} , accuracy test {accuracy_all_test[-1]} accuracy train {accuracy_all_train[-1]}')
+    print(f'accuracy all test:\n {accuracy_all_test}')
+    print(f'accuracy all training:\n {accuracy_all_train}')
+    print("cnt = ", cnt)
+    plt.plot(accuracy_all_train)
+    plt.plot(accuracy_all_test)
+    if point_where_accuracy_is_09 != -1:
+        plt.plot(point_where_accuracy_is_09, 0.9, 'ro')
+        plt.text(point_where_accuracy_is_09, 0.9, f'({point_where_accuracy_is_09}, 0.9)')
+    plt.title(f'FG, Divider {divider}, layers {layers}')
+    plt.xlabel('epoch')
+    plt.ylabel('accuracy')
+    plt.legend(['train', 'test'])
+    plt.savefig(f'FG, Divider {divider}, layers {layers}.png')
+    plt.show()
+
+
+def main():
+    num_inputs = 32
+    sample_size = 20000
+    numbers_to_divide_by = get_all_premonition([3, 5, 7, 9], amount_of_elements=3)
+    max_number = 100000
+
+    # layers 3 - 10
+    # switch rate 2 - 20
+    # modularity
+    # start from one number
+    df = create_data(num_inputs, sample_size, max_number, numbers_to_divide_by, use_old_data=True)
+
+    df.drop_duplicates(inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    # print some statistics about the decimal col
+    print(df['decimal'].describe())
+    # print amount of unique values
+    print(f"amount of unique values: {df['decimal'].nunique()}, total amount of values: {len(df['decimal'])}")
+    X = df.filter(regex='input')
+    y = df.filter(regex='divide_by')
+    # find thw is the max number of bits in the input
+    # split the data into training and testing
+    y_test: DataFrame
+    y_train: DataFrame
+    X_test: DataFrame
+    X_train: DataFrame
+    X_train, X_test, y_train, y_test, = train_test_split(X, y, test_size=0.2, random_state=42)
+    # move to date folder
+    dir_name = datetime.datetime.now().strftime("%Y-%m-%d")
+    if not os.path.exists(dir_name):
+        os.mkdir(dir_name)
+    os.chdir(dir_name)
+    time_start = time.time()
+    for layers in range(6, 7):
+        clear_session()
+        model = model_crate(num_inputs, layers)
+        FG(X_train, y_train.iloc[:, -1], X_test, y_test.iloc[:, -1], numbers_to_divide_by[-1], model, layers, iterations=40)
+        del model
+    time_end = time.time()
+    print(f'time to run FG: {time_end - time_start}')
+    time_start = time.time()
+
+    # for layers in range(2, 3):
+    #     clear_session()
+    #     model = model_crate(num_inputs, layers)
+    #     MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model, layers, total_epochs_for_each_label=300, round_epoch=20)
+    #     del model
+    time_end = time.time()
+    print(f'time to run MVG: {time_end - time_start}')
+    # MVG(X_train, y_train, X_test, y_test, model, num_epochs, numbers_to_divide_by)
 
 
 if __name__ == '__main__':
-    # load data from csv
+    main()
 
-    num_inputs = 32
-    sample_size = 10000
-    # df = crate_data(num_inputs, sample_size, [3 * (7 ** 2), (3 ** 2) * 7, (3 ** 2) * (7 ** 2)])
-    df = crate_data(num_inputs, sample_size, [3,5,7])
-    df.drop(['decimal'], axis=1, inplace=True)
+    # FG(X_train, y_train.iloc[:, 0], X_test, y_test.iloc[:, 0], numbers_to_divide_by[0], model)
+    # MVG(X_train, y_train, X_test, y_test, model, num_epochs, numbers_to_divide_by)
 
-    # create the input and output data
-    X = df.iloc[:, 0:num_inputs].values
-    y = df.iloc[:, num_inputs:].values
-    divide_name = df.columns[num_inputs:]
-
-    # split the data into training and testing
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    model = Sequential()
-    model.add(Dense(num_inputs, input_dim=num_inputs, activation='relu'))
-    model.add(Dense(num_inputs, activation='relu'))
-    model.add(Dense(num_inputs, activation='relu'))
-    model.add(Dense(X_train.shape[1], activation='relu'))
-    model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer=Adam(), metrics=[keras.metrics.BinaryAccuracy()])
-
-    # divide to train and test
-    accuracy = {}
-    for divider in divide_name:
-        accuracy[divider] = []
-    accuracy_all = []
-    for i in range(100):
-        cur_y_train = y_train[:, i % len(divide_name)]
-        cur_y_test = y_test[:, i % len(divide_name)]
-        # Train the model on the current desired output
-        # model.train_on_batch(X_train, cur_y_train)
-        accuracy[divide_name[i % len(divide_name)]].append(
-            model.fit(X_train, cur_y_train, epochs=1).history['binary_accuracy'][0])
-        # accuracy_all.append(model.fit(X_train, cur_y_train, epochs=1).history['binary_accuracy'][0])
-        # print("Finished training on " + divide_name[i % len(divide_name)])
-        # accuracy[divide_name[i % len(divide_name)]].append(model.evaluate(X_train, cur_y_train, verbose=0)[1])
-        print(i)
-
-    # plot the results
-    for divider in divide_name:
-        plt.plot(accuracy[divider], label=divider)
-    # plt.plot(accuracy_all, label='all')
-    plt.legend()
-    plt.show()
-    exit(0)
-
-    for i in range(len(divide_name)):
-        model = Sequential()
-        model.add(Dense(num_inputs, input_dim=num_inputs, activation='relu'))
-        model.add(Dense(num_inputs, activation='relu'))
-        model.add(Dense(num_inputs, activation='relu'))
-        model.add(Dense(X_train.shape[1], activation='relu'))
-        model.add(Dense(1, activation='sigmoid'))
-        model.compile(loss='binary_crossentropy', optimizer=Adam(), metrics=[keras.metrics.BinaryAccuracy()])
-        # record accuracy after each epoch
-        acc_list = []
-        a = model.fit(X_train, y_train[:, i], epochs=100, workers=4, use_multiprocessing=True)
-        plt.plot(a.history['binary_accuracy'], label=divide_name[i])
-        plt.legend()
-        plt.show()
-        print(model.summary())
-
-        print(model.evaluate(X_test, y_test[:, i], verbose=0)[1])
+    # learn_on_one_divider(X_train, y_train, X_test, y_test, model, num_epochs, numbers_to_divide_by)
