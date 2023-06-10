@@ -5,6 +5,7 @@ import os
 import time
 
 import keras.metrics
+import networkx as nx
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -20,6 +21,7 @@ from pandas import DataFrame
 from sklearn.model_selection import train_test_split
 
 from numpy.random import default_rng
+import bisect
 
 from data.data_crate import create_data
 
@@ -37,6 +39,29 @@ rng = default_rng(seed=42)
 # TODO - check what is minimal layers needed to succeed in validation.
 # TODO - check how that history is saved.
 # TODO - girvan newman algorithm
+
+
+def convert_to_graph(model):
+    G = nx.Graph()
+    for layer in model.layers:
+        weights = layer.get_weights()
+        if len(weights) > 0:
+            # Get the weights and biases from the layer
+            W, b = weights[0], weights[1]
+            num_nodes_prev, num_nodes = W.shape
+
+            # Add nodes to the graph
+            for i in range(num_nodes):
+                G.add_node((layer.name, i))
+
+            # Add edges with weights to the graph
+            for i in range(num_nodes_prev):
+                for j in range(num_nodes):
+                    weight = W[i, j]
+                    G.add_edge((layer.name, i), (layer.name, j), weight=weight)
+
+    return G
+
 
 def model_crate(num_inputs, layers):
     model = Sequential()
@@ -94,13 +119,6 @@ def MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model: Sequentia
     # check if the algorithm found the correct dividers
 
 
-def model_to_wrighted_graph(model):
-    # get the weights of the model
-    # create a graph with the weights
-    # return the graph
-    model_weights = model.get_weights()
-
-
 def get_all_premonition(numbers, amount_of_elements):
     combinations = list(itertools.combinations(numbers, amount_of_elements))
     for i in range(len(combinations)):
@@ -109,27 +127,14 @@ def get_all_premonition(numbers, amount_of_elements):
 
 
 def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, layers, iterations=100):
-    accuracy_all_train = []
-    accuracy_all_test = []
-    cnt = 0
+    model.fit(X_train, y_train, epochs=iterations, validation_data=(X_test, y_test), shuffle=True, use_multiprocessing=True, workers=4)
+    # find the point where the accuracy is 0.9
+    accuracy_all_train = model.history.history['binary_accuracy']
+    accuracy_all_test = model.history.history['val_binary_accuracy']
     point_where_accuracy_is_09 = -1
-    while cnt < iterations:
-        model.fit(X_train, y_train, epochs=20, validation_data=(X_test, y_test), shuffle=True, use_multiprocessing=True, workers=4,
-                  verbose=0)
-        cnt += 20
-        accuracy_all_train.extend(model.history.history['binary_accuracy'])
-        accuracy_all_test.extend(model.history.history['val_binary_accuracy'])
-        # add the exact point where the accuracy is 0.9
-        if accuracy_all_test[-1] > 0.9 and point_where_accuracy_is_09 == -1:
-            for i in range(len(accuracy_all_test)):
-                if accuracy_all_test[i] > 0.9:
-                    point_where_accuracy_is_09 = i
-                    print(f'point where accuracy is 0.9 is {point_where_accuracy_is_09}')
-                    break
-        print(f'epoch {cnt} out of {iterations} , accuracy test {accuracy_all_test[-1]} accuracy train {accuracy_all_train[-1]}')
-    print(f'accuracy all test:\n {accuracy_all_test}')
-    print(f'accuracy all training:\n {accuracy_all_train}')
-    print("cnt = ", cnt)
+    if accuracy_all_test[-1] > 0.9:
+        point_where_accuracy_is_09 = bisect.bisect_left(accuracy_all_test, 0.9)
+        print(f'point where accuracy is 0.9 is {point_where_accuracy_is_09}')
     plt.plot(accuracy_all_train)
     plt.plot(accuracy_all_test)
     if point_where_accuracy_is_09 != -1:
@@ -143,12 +148,24 @@ def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, layers, ite
     plt.show()
 
 
+from ann_visualizer.visualize import ann_viz
+
+
+def model_to_graph(model: Sequential):
+    dot_img_file = 'model_1.png'
+    ann_viz(model, title="My first neural network")
+    G = convert_to_graph(model)
+    print(G.nodes)
+    print(G.edges)
+    nx.draw(G)
+    plt.show()
+
+
 def main():
     num_inputs = 32
     sample_size = 20000
     numbers_to_divide_by = get_all_premonition([3, 5, 7, 9], amount_of_elements=3)
     max_number = 100000
-
     # layers 3 - 10
     # switch rate 2 - 20
     # modularity
@@ -157,9 +174,8 @@ def main():
 
     df.drop_duplicates(inplace=True)
     df.reset_index(drop=True, inplace=True)
-    # print some statistics about the decimal col
+    # print some statistics about the data
     print(df['decimal'].describe())
-    # print amount of unique values
     print(f"amount of unique values: {df['decimal'].nunique()}, total amount of values: {len(df['decimal'])}")
     X = df.filter(regex='input')
     y = df.filter(regex='divide_by')
@@ -171,27 +187,29 @@ def main():
     X_train: DataFrame
     X_train, X_test, y_train, y_test, = train_test_split(X, y, test_size=0.2, random_state=42)
     # move to date folder
-    dir_name = datetime.datetime.now().strftime("%Y-%m-%d")
+    dir_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     if not os.path.exists(dir_name):
         os.mkdir(dir_name)
     os.chdir(dir_name)
-    time_start = time.time()
+
+    # time_start = time.time()
     for layers in range(6, 7):
         clear_session()
         model = model_crate(num_inputs, layers)
-        FG(X_train, y_train.iloc[:, -1], X_test, y_test.iloc[:, -1], numbers_to_divide_by[-1], model, layers, iterations=40)
+        FG(X_train, y_train.iloc[:, -1], X_test, y_test.iloc[:, -1], numbers_to_divide_by[-1], model, layers, iterations=20)
+        model_to_graph(model)
         del model
-    time_end = time.time()
-    print(f'time to run FG: {time_end - time_start}')
-    time_start = time.time()
+    # time_end = time.time()
+    # print(f'time to run FG: {time_end - time_start}')
+    # time_start = time.time()
 
     # for layers in range(2, 3):
     #     clear_session()
     #     model = model_crate(num_inputs, layers)
     #     MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model, layers, total_epochs_for_each_label=300, round_epoch=20)
     #     del model
-    time_end = time.time()
-    print(f'time to run MVG: {time_end - time_start}')
+    # time_end = time.time()
+    # print(f'time to run MVG: {time_end - time_start}')
     # MVG(X_train, y_train, X_test, y_test, model, num_epochs, numbers_to_divide_by)
 
 

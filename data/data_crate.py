@@ -19,8 +19,11 @@ def create_data(num_bits, num_samples, max_number, numbers_to_divide_by: list, s
                 f"loaded data from file data_max_{max_number}_sample_{num_samples}_first_divider_{numbers_to_divide_by}.csv")
             return df
         except FileNotFoundError:
-            pass
-        assert max(numbers_to_divide_by) * max_number < 2 ** (num_bits - 1), "not enough bits to represent all numbers"
+            print(
+                f"could not find file data_max_{max_number}_sample_{num_samples}_first_divider_{numbers_to_divide_by}.csv")
+            print("exiting...")
+            exit(1)
+    assert max(numbers_to_divide_by) * max_number < 2 ** (num_bits - 1), "not enough bits to represent all numbers"
     decimal_numbers = np.random.randint(low=0, high=max_number, size=num_samples) * np.random.choice(
         numbers_to_divide_by, num_samples)
     binary_numbers = np.unpackbits(decimal_numbers.view(np.uint8)).reshape(-1, num_bits)
