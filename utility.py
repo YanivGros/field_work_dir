@@ -9,7 +9,7 @@ import numpy as np
 # keras imports
 from keras.models import Sequential
 from keras.layers import Dense
-from keras.optimizers.optimizer_v2.adam import Adam
+from keras.optimizers.legacy import Adam
 from keras.metrics import BinaryAccuracy
 
 
@@ -47,30 +47,33 @@ def crate_parser():
     parser.add_argument('-n', '--num_inputs', type=int, default=32)
     parser.add_argument('-d', '--data_size', type=int, default=20_000)
     parser.add_argument('-m', '--max_number', type=int, default=100_000)
-    parser.add_argument('-l', '--layers', type=int, default=3)
-    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='FG')
+    parser.add_argument('-l', '--layers', type=int, default=5)
+    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='MVG')
     parser.add_argument('-i', '--iterations_fg', type=int, default=100)
-    parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=20)
-    parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=10)
+    parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=40)
+    parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=20)
     return parser.parse_args()
 
-
-def model_crate(num_inputs, layers):
+from keras.regularizers import l1
+def model_crate(num_inputs, layers, width=1):
     """
     Crate a model with the given parameters
+    :param width: the width of the model
     :param num_inputs: number of bits that the model will get
     :param layers: number of layers in the model
     :return: sequential NN model
     """
     model = Sequential()
+    should_use_kernel_regularize = False
     if layers == 0:
         model.add(Dense(1, input_dim=num_inputs, activation='sigmoid'))
     else:
-        model.add(Dense(num_inputs, input_dim=num_inputs, activation='relu'))
+        model.add(Dense(num_inputs * width, input_dim=num_inputs, activation='relu', kernel_regularizer=l1(0.01)))
         for i in range(layers - 1):
-            model.add(Dense(num_inputs, activation='relu'))
+            model.add(Dense(num_inputs * width, activation='relu', kernel_regularizer=l1(0.01)))
         model.add(Dense(1, activation='sigmoid'))
     model.compile(loss='binary_crossentropy', optimizer=Adam(), metrics=[BinaryAccuracy()])
+    print(model.summary())
     return model
 
 
