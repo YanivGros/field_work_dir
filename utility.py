@@ -48,32 +48,35 @@ def crate_parser():
     parser.add_argument('-d', '--data_size', type=int, default=20_000)
     parser.add_argument('-m', '--max_number', type=int, default=100_000)
     parser.add_argument('-l', '--layers', type=int, default=5)
-    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='FG')
-    parser.add_argument('-i', '--iterations_fg', type=int, default=5)
-    parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=40)
-    parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=20)
+    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='MVG')
+    parser.add_argument('-i', '--iterations_fg', type=int, default=100)
+    parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=3)
+    parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=101)
+    parser.add_argument('-w', '--width_multiplayer', type=int, default=4)
     return parser.parse_args()
 
+
 from keras.regularizers import l1
-def model_crate(num_inputs, layers, width=1):
+
+
+def model_crate(num_inputs, layers, width_multiplayer=1, regularizer=None):
     """
     Crate a model with the given parameters
-    :param width: the width of the model
+    :param regularizer: the regularizer to use
+    :param width_multiplayer: the width of the model
     :param num_inputs: number of bits that the model will get
     :param layers: number of layers in the model
     :return: sequential NN model
     """
     model = Sequential()
-    should_use_kernel_regularize = False
     if layers == 0:
         model.add(Dense(1, input_dim=num_inputs, activation='sigmoid'))
     else:
-        model.add(Dense(num_inputs * width, input_dim=num_inputs, activation='relu', kernel_regularizer=l1(1e-5)))
+        model.add(Dense(num_inputs * width_multiplayer, input_dim=num_inputs, activation='relu', kernel_regularizer=regularizer))
         for i in range(layers - 1):
-            model.add(Dense(num_inputs * width, activation='relu', kernel_regularizer=l1(1e-5)))
+            model.add(Dense(num_inputs * width_multiplayer, activation='relu', kernel_regularizer=regularizer))
         model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer=Adam(), metrics=[BinaryAccuracy()])
-    print(model.summary())
+    model.compile(loss='binary_crossentropy', optimizer="Adam", metrics=[BinaryAccuracy()])
     return model
 
 
@@ -102,11 +105,3 @@ def convert_to_graph(model: Sequential):
                     G.add_edge((layer.name, i), (layer.name, j), weight=weight)
     return G
 
-
-def print_with_separator(string: str):
-    """
-    Print a string with a separator
-    :param string: the string to print
-    :return: None
-    """
-    print(f"{'-' * 20}\n{string}\n{'-' * 20}")

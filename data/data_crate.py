@@ -6,21 +6,18 @@ from matplotlib import pyplot as plt
 
 
 def clean_data(df: pd.DataFrame):
+    """
+    Remove outliers and duplicates from the data
+    :param df: dataframe to clean
+    :return: the cleaned dataframe
+    """
     mean = df['decimal'].mean()
-    var = df['decimal']
-    df.drop((df[df['decimal'] > mean + 2 * np.sqrt(var)]).index, inplace=True)
+    std = df['decimal'].std()
+    df.drop((df[df['decimal'] > mean + 2 * np.sqrt(std)]).index, inplace=True)
+
     df.drop_duplicates(inplace=True)
     df.reset_index(drop=True, inplace=True)
-    largest_bit = np.ceil(np.log2(df['decimal'].max() + 1))
-    print(f"amount of unique values: {df['decimal'].nunique()}, total amount of values: {len(df['decimal'])}")
-    print(f'largest bit in use is {largest_bit}')
-    print(df['decimal'].describe())
-    print(df.filter(regex='^divide_by').describe())
-    plt.hist(df['decimal'], bins=100)
-    plt.title('decimal distribution')
-    plt.savefig('decimal distribution.png')
-    plt.show()
-    print(df.filter(regex='^m_divide_by').describe())
+    print(df.describe())
     return df
 
 
@@ -56,7 +53,7 @@ def create_data(num_bits, num_samples, max_number, numbers_to_divide_by: list, m
         df[f"m_divide_by_{str(divider)}"] = (decimal_numbers % divider == 0).astype(int)
     cleaned_df = clean_data(df)
     cleaned_df.to_csv(file_path, index=False)
-    return clean_data(df)
+    return cleaned_df
 
 
 if __name__ == '__main__':
