@@ -48,8 +48,8 @@ def crate_parser():
     parser.add_argument('-d', '--data_size', type=int, default=20_000)
     parser.add_argument('-m', '--max_number', type=int, default=100_000)
     parser.add_argument('-l', '--layers', type=int, default=5)
-    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='MVG')
-    parser.add_argument('-i', '--iterations_fg', type=int, default=100)
+    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='FG')
+    parser.add_argument('-i', '--iterations_fg', type=int, default=5)
     parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=40)
     parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=20)
     return parser.parse_args()
@@ -68,9 +68,9 @@ def model_crate(num_inputs, layers, width=1):
     if layers == 0:
         model.add(Dense(1, input_dim=num_inputs, activation='sigmoid'))
     else:
-        model.add(Dense(num_inputs * width, input_dim=num_inputs, activation='relu', kernel_regularizer=l1(0.01)))
+        model.add(Dense(num_inputs * width, input_dim=num_inputs, activation='relu', kernel_regularizer=l1(1e-5)))
         for i in range(layers - 1):
-            model.add(Dense(num_inputs * width, activation='relu', kernel_regularizer=l1(0.01)))
+            model.add(Dense(num_inputs * width, activation='relu', kernel_regularizer=l1(1e-5)))
         model.add(Dense(1, activation='sigmoid'))
     model.compile(loss='binary_crossentropy', optimizer=Adam(), metrics=[BinaryAccuracy()])
     print(model.summary())

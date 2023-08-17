@@ -47,7 +47,7 @@ def MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model: Sequentia
             cur_test = y_test.iloc[:, j]
             model.fit(X_train, cur_train, validation_data=[X_test, cur_test], epochs=epoch_per_round, verbose=1,
                       shuffle=True,
-                      use_multiprocessing=True, workers=16)
+                      use_multiprocessing=True, workers=32)
 
             for epoch, (train_acc, test_acc) in enumerate(
                     zip(model.history.history['binary_accuracy'], model.history.history['val_binary_accuracy'])):
@@ -123,19 +123,23 @@ def evaluate_model(model: Sequential, dividers, learning_type):
 
 
 def FG_all(X_train, y_train, X_test, y_test, numbers_to_divide_by, model, layers, iterations=100, path="./"):
-    accuracy_all_test = []
-    accuracy_all_train = []
+    # accuracy_all_test = []
+    # accuracy_all_train = []
+    df_accuracy = pd.DataFrame(columns=['epoch', 'train_accuracy', 'test_accuracy', 'divider'])
     for col in y_train.columns:
         temp_train, temp_test = FG(X_train, y_train[col], X_test, y_test[col], col, model, layers, iterations=iterations, path=path)
-        accuracy_all_train.extend(temp_train)
-        accuracy_all_test.extend(temp_test)
-    plt.plot(accuracy_all_train)
-    plt.plot(accuracy_all_test)
+        # accuracy_all_train.extend(temp_train)
+        # accuracy_all_test.extend(temp_test)
+        df_accuracy = pd.concat([df_accuracy, pd.DataFrame(
+            {'epoch': np.arange(len(temp_train)), 'train_accuracy': temp_train, 'test_accuracy': temp_test, 'divider': col})],
+                                ignore_index=True)
+    plt.plot(df_accuracy['train_accuracy'])
+    plt.plot(df_accuracy['test_accuracy'])
     plt.title(f'FG, Dividers {numbers_to_divide_by}, layers {layers}, full learning')
     plt.xlabel('epoch')
     plt.ylabel('accuracy')
     plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig(os.path.join(path, 'FG, Dividers {numbers_to_divide_by}, layers {layers}, full learning.png'))
+    plt.savefig(os.path.join(path, f'FG, Dividers {numbers_to_divide_by}, layers {layers}, full learning.png'))
     plt.show()
 
 
@@ -165,12 +169,15 @@ def main():
     cur_out_dir = os.path.join("output", datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
     os.makedirs(cur_out_dir, exist_ok=True)
     model = model_crate(num_inputs, layers, 4)
+    clear_session()
     if learning_type == 'MVG':
         MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model, layers, num_round=amount_of_rounds_mvg,
             epoch_per_round=iterations_each_round_mvg, path=cur_out_dir)
     elif learning_type == 'FG':
         FG_all(X_train, y_train, X_test, y_test, numbers_to_divide_by, model, layers, iterations=iterations_fg, path=cur_out_dir)
-    model.save(os.path.join(cur_out_dir, 'model.h5'))
+    model.save(os.path.join(cur_out_dir, 'model.keras'))
+    clear_session()
+
 
 if __name__ == '__main__':
     time = timeit(main, number=1)
