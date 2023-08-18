@@ -13,7 +13,7 @@ def clean_data(df: pd.DataFrame):
     """
     mean = df['decimal'].mean()
     std = df['decimal'].std()
-    df.drop((df[df['decimal'] > mean + 2 * np.sqrt(std)]).index, inplace=True)
+    # df.drop((df[df['decimal'] > mean + std]).index, inplace=True)
 
     df.drop_duplicates(inplace=True)
     df.reset_index(drop=True, inplace=True)
@@ -27,9 +27,9 @@ def create_data(num_bits, num_samples, max_number, numbers_to_divide_by: list, m
     :param num_bits: The number of bits to represent the input
     :param num_samples: The number of samples to create
     :param max_number: The maximum number to represent in the input
-    :param numbers_to_divide_by: The numbers to divide by (the output)
+    :param numbers_to_divide_by: The numbers to divide by (the output_old)
     :param modules: The modules that build the numbers to divide by
-    :return: A dataframe with the input and output
+    :return: A dataframe with the input and output_old
     """
     file_path = os.path.join(path, f"data_max_{max_number}_sample_{num_samples}_dividers_{numbers_to_divide_by}.csv")
     try:
@@ -39,9 +39,13 @@ def create_data(num_bits, num_samples, max_number, numbers_to_divide_by: list, m
     except FileNotFoundError:
         print(f"could not find file {file_path}")
         print("creating new data")
-    assert max(numbers_to_divide_by) * max_number < 2 ** (num_bits - 1), "not enough bits to represent all numbers"
-    decimal_numbers = np.random.randint(low=0, high=max_number, size=num_samples) * np.random.choice(
-        numbers_to_divide_by, num_samples)
+    assert max_number < 2 ** (num_bits - 1), "not enough bits to represent all numbers"
+    # round the number to the nearest number that divide by a number in numbers_to_divide_by
+    decimal_numbers = np.random.randint(low=0, high=max_number, size=num_samples)
+    random_choice = np.random.choice(numbers_to_divide_by, num_samples)
+    decimal_numbers = np.round(decimal_numbers / random_choice).astype(int) * random_choice
+    # decimal_numbers = np.random.randint(low=0, high=max_number, size=num_samples) * np.random.choice(
+    #     numbers_to_divide_by, num_samples)
     binary_repr_func = np.vectorize(lambda num: list(map(int, np.binary_repr(num).zfill(num_bits))), otypes=[np.ndarray])
     binary_numbers = np.array(binary_repr_func(decimal_numbers).tolist())
     df = pd.DataFrame(binary_numbers)

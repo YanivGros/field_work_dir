@@ -37,39 +37,41 @@ from data.data_crate import create_data
 
 rng = default_rng(seed=42)
 
-os.makedirs("output", exist_ok=True)
-cur_out_dir = os.path.join("output", datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
-os.makedirs(cur_out_dir, exist_ok=True)
-
-logging.basicConfig(level=logging.INFO, filename=os.path.join(cur_out_dir, "log_file.log"), filemode='w', format='%(message)s')
-logger = logging.getLogger(__name__)
-
 
 def MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model: Sequential, num_round=11, epoch_per_round=10):
     accuracy_columns = ['round', 'epoch', 'divider', 'train_accuracy', 'test_accuracy']
     accuracy_df = pd.DataFrame(columns=accuracy_columns)
-
-    power_law_weights = np.random.power(a=2, size=len(y_train.columns))
-
-    # Normalize the weights
-    normalized_weights = power_law_weights / power_law_weights.sum()
-    normalized_weights = [0.3,0.2,0.5]
-    print(f"{numbers_to_divide_by[0]} : {normalized_weights[0]}")
-    print(f"{numbers_to_divide_by[1]} : {normalized_weights[1]}")
-    print(f"{numbers_to_divide_by[2]} : {normalized_weights[2]}")
+    is_over_threshold = [False] * len(numbers_to_divide_by)
+    threshold = 0.99
+    # found = False
     for i in range(num_round):
+        for j, number in enumerate(numbers_to_divide_by):
+            # if is_over_threshold[j]:
+            #     continue
+            cur_train = y_train.iloc[:, j]
+            cur_test = y_test.iloc[:, j]
+            model.fit(X_train, cur_train, validation_data=[X_test, cur_test], epochs=epoch_per_round, verbose=1,
+                      shuffle=True,
+                      use_multiprocessing=True, workers=16)
+            accuracy_df = pd.concat([accuracy_df, pd.DataFrame({'round': i, 'epoch': np.arange(epoch_per_round), 'divider': number,
+                                                                'train_accuracy': model.history.history['binary_accuracy'],
+                                                                'test_accuracy': model.history.history['val_binary_accuracy']})],
+                                    ignore_index=True)
+            if any(num > threshold for num in model.history.history['val_binary_accuracy']) and not is_over_threshold[j]:
+                is_over_threshold[j] = True
+                print(f'done round {i} out of {num_round} divider {number} is over {threshold}')
+            if all(is_over_threshold):
+                print(
+                    f'learned all dividers in round {i * epoch_per_round + bisect.bisect_left(model.history.history["val_binary_accuracy"], threshold)}')
+                accuracy_df.to_csv(os.path.join(cur_out_dir, f'MVG_data.csv'), index=False)
+                return
+                # print(f'learned all dividers in round {i}')
+                # if not found:
+                #     logger.info(f'learned all dividers in round {i}')
+                #     found = True
+                # print(f'done! in round {i} out of {num_round} divider {number}')
+            print(f'round {i} out of {num_round} divider {number}')
 
-        # Choose a column using the power-law distribution
-        choice = np.random.choice(y_train.columns, p=normalized_weights)
-        cur_train = y_train[choice]
-        cur_test = y_test[choice]
-        model.fit(X_train, cur_train, validation_data=[X_test, cur_test], epochs=epoch_per_round, verbose=1, shuffle=True,
-                  use_multiprocessing=True, workers=32)
-        accuracy_df = pd.concat([accuracy_df, pd.DataFrame({'round': i, 'epoch': np.arange(epoch_per_round), 'divider': choice,
-                                                            'train_accuracy': model.history.history['binary_accuracy'],
-                                                            'test_accuracy': model.history.history['val_binary_accuracy']})],
-                                ignore_index=True)
-        print(f'round {i} out of {num_round} divider {choice}')
         if i % 5 == 0:
             plt.plot(accuracy_df['train_accuracy'])
             plt.plot(accuracy_df['test_accuracy'])
@@ -77,7 +79,7 @@ def MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model: Sequentia
             plt.legend(['train', 'test'], loc='upper left')
             plt.savefig(os.path.join(cur_out_dir, f'MVG_sequential_step{i}.png'))
             plt.show()
-            for divider in y_test.columns:
+            for divider in numbers_to_divide_by:
                 divider_data = accuracy_df[accuracy_df['divider'] == divider]
                 plt.plot(divider_data['train_accuracy'].reset_index(drop=True), label=f'train {divider}')
                 plt.plot(divider_data['test_accuracy'].reset_index(drop=True), label=f'test {divider}')
@@ -90,24 +92,41 @@ def MVG(X_train, y_train, X_test, y_test, numbers_to_divide_by, model: Sequentia
     accuracy_df.to_csv(os.path.join(cur_out_dir, f'MVG_data.csv'), index=False)
 
 
-def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, iterations=100):
-    model.fit(X_train, y_train, epochs=iterations, validation_data=(X_test, y_test), shuffle=True, use_multiprocessing=True, workers=8, )
+class MyThresholdCallback(tf.keras.callbacks.Callback):
+    def __init__(self, threshold):
+        super(MyThresholdCallback, self).__init__()
+        self.threshold = threshold
+
+    def on_epoch_end(self, epoch, logs=None):
+        accuracy = logs["val_binary_accuracy"]
+        if accuracy >= self.threshold:
+            self.model.stop_training = True
+
+
+def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, iterations=100, threshold=0.99):
+    # make the model stoped when it reach 0.99 accuracy
+    call_back = MyThresholdCallback(threshold)
+    model.fit(X_train, y_train, epochs=iterations, validation_data=(X_test, y_test), shuffle=True, use_multiprocessing=True, workers=16,
+              callbacks=[call_back], verbose=1)
+    print(f"done! divider {divider} stopped at {len(model.history.history['binary_accuracy'])}")
     accuracy_all_train = model.history.history['binary_accuracy']
     accuracy_all_test = model.history.history['val_binary_accuracy']
-    if accuracy_all_test[-1] > 0.9:
-        point_where_accuracy_is_09 = bisect.bisect_left(accuracy_all_test, 0.9)
-        logger.info(f'point where accuracy is 0.9 is {point_where_accuracy_is_09}')
-        plt.plot(point_where_accuracy_is_09, 0.9, 'ro')
-        plt.text(point_where_accuracy_is_09, 0.9, f'({point_where_accuracy_is_09}, 0.9)')
+    found = False
+    if any(num > threshold for num in accuracy_all_test):
+        threshold_point = accuracy_all_test.index(next((num for num in accuracy_all_test if num > threshold), None))
+        logger.info(f'point where accuracy is 0.99 is {threshold_point}')
+        plt.plot(threshold_point, 0.99, 'ro')
+        plt.text(threshold_point, 0.99, f'({threshold_point}, 0.99)')
+        found = True
     plt.plot(accuracy_all_train)
     plt.plot(accuracy_all_test)
     plt.title(f'FG, Divider {divider}')
     plt.xlabel('epoch')
     plt.ylabel('accuracy')
-    if accuracy_all_test[-1] > 0.9:
-        plt.legend(['0.9', 'train', 'test'], loc='upper left')
+    if found:
+        plt.legend(['0.99', 'train', 'test'])
     else:
-        plt.legend(['train', 'test'], loc='upper left')
+        plt.legend(['train', 'test'])
     plt.savefig(os.path.join(cur_out_dir, f'FG_Divider_{divider}.png'))
     plt.show()
     return accuracy_all_train, accuracy_all_test
@@ -136,8 +155,9 @@ def FG_all(X_train, y_train, X_test, y_test, numbers_to_divide_by, model, iterat
     plt.title(f'FG, Dividers {numbers_to_divide_by} full learning')
     plt.xlabel('epoch')
     plt.ylabel('accuracy')
-    plt.legend(['train', 'test'], loc='upper left')
+    plt.legend(['train', 'test'])
     plt.savefig(os.path.join(cur_out_dir, f'FG_{numbers_to_divide_by}_full_learning.png'))
+    df_accuracy.to_csv(os.path.join(cur_out_dir, f'FG_{numbers_to_divide_by}_full_learning.csv'), index=False)
     plt.show()
 
 
@@ -145,7 +165,19 @@ def log_with_separator(param):
     logger.info(f'{"-" * 20}{param}{"-" * 20}')
 
 
+logger = None
+cur_out_dir = None
+
+
 def main():
+    os.makedirs("output", exist_ok=True)
+    global cur_out_dir
+    cur_out_dir = os.path.join("output", datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    os.makedirs(cur_out_dir, exist_ok=True)
+
+    global logger
+    logging.basicConfig(level=logging.INFO, filename=os.path.join(cur_out_dir, "log_file.log"), filemode='w', format='%(message)s')
+    logger = logging.getLogger(__name__)
     args = crate_parser()
     num_inputs = args.num_inputs
     data_size = args.data_size
@@ -158,7 +190,7 @@ def main():
     width_multiplayer = args.width_multiplayer
     modules = [3, 7, 11]
     numbers_to_divide_by = get_all_premonition_mult(modules, amount_of_elements=2)
-    regularizer = l1(1e-6)
+    regularizer = l1(1e-5)
 
     logger.info(f'num_inputs: {num_inputs}')
     logger.info(f'data_size: {data_size}')
@@ -210,7 +242,7 @@ def main():
 
 
 if __name__ == '__main__':
-    time = timeit(main, number=1)
+    time = timeit(main, number=10)
     logger.info(f'time to run main: {time}')
     # os.rmdir(cur_out_dir)
 
@@ -230,7 +262,7 @@ if __name__ == '__main__':
 # TODO - check what is minimal layers needed to succeed in validation.
 # TODO - check how that history is saved.
 # TODO - girvan newman algorithm
-# TODO - multicalssfication - multi output - try with loss
+# TODO - multicalssfication - multi output_old - try with loss
 # todo - other goals.
 # todo - try wider neworks
 # todo - add L1
