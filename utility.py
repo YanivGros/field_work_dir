@@ -45,7 +45,7 @@ def crate_parser():
     """
     parser = argparse.ArgumentParser(prog="MVG")
     parser.add_argument('-n', '--num_inputs', type=int, default=32)
-    parser.add_argument('-d', '--data_size', type=int, default=40_000)
+    parser.add_argument('-d', '--data_size', type=int, default=10_000)
     parser.add_argument('-m', '--max_number', type=int, default=2_000_000)
     parser.add_argument('-l', '--layers', type=int, default=3)
     # parser.add_argument('-l', '--layers', type=int, default=2)

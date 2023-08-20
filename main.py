@@ -114,9 +114,9 @@ def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, iterations=
     found = False
     if any(num > threshold for num in accuracy_all_test):
         threshold_point = accuracy_all_test.index(next((num for num in accuracy_all_test if num > threshold), None))
-        logger.info(f'point where accuracy is 0.99 is {threshold_point}')
-        plt.plot(threshold_point, 0.99, 'ro')
-        plt.text(threshold_point, 0.99, f'({threshold_point}, 0.99)')
+        logger.info(f'point where accuracy is {threshold} is {threshold_point}')
+        plt.plot(threshold_point, threshold, 'ro')
+        plt.text(threshold_point, threshold, f'({threshold_point},{threshold}')
         found = True
     plt.plot(accuracy_all_train)
     plt.plot(accuracy_all_test)
@@ -124,7 +124,7 @@ def FG(X_train, y_train, X_test, y_test, divider, model: Sequential, iterations=
     plt.xlabel('epoch')
     plt.ylabel('accuracy')
     if found:
-        plt.legend(['0.99', 'train', 'test'])
+        plt.legend([f'f{threshold}', 'train', 'test'])
     else:
         plt.legend(['train', 'test'])
     plt.savefig(os.path.join(cur_out_dir, f'FG_Divider_{divider}.png'))
