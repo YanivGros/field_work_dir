@@ -11,8 +11,8 @@ def clean_data(df: pd.DataFrame):
     :param df: dataframe to clean
     :return: the cleaned dataframe
     """
-    mean = df['decimal'].mean()
-    std = df['decimal'].std()
+    # mean = df['decimal'].mean()
+    # std = df['decimal'].std()
     # df.drop((df[df['decimal'] > mean + std]).index, inplace=True)
 
     df.drop_duplicates(inplace=True)
@@ -21,7 +21,7 @@ def clean_data(df: pd.DataFrame):
     return df
 
 
-def create_data(num_bits, num_samples, max_number, numbers_to_divide_by: list, modules: list, path: str = "./") -> pd.DataFrame:
+def create_data(num_bits, num_samples, max_number, numbers_to_divide_by, modules, path="./") -> pd.DataFrame:
     """
     :param path: The path to save the data
     :param num_bits: The number of bits to represent the input

@@ -5,12 +5,10 @@ import os
 
 import networkx as nx
 import numpy as np
-
+from keras.layers import Dense
+from keras.metrics import BinaryAccuracy
 # keras imports
 from keras.models import Sequential
-from keras.layers import Dense
-from keras.optimizers.legacy import Adam
-from keras.metrics import BinaryAccuracy
 
 
 def crate_and_cd_to_dir(dir_name: str) -> None:
@@ -45,20 +43,17 @@ def crate_parser():
     """
     parser = argparse.ArgumentParser(prog="MVG")
     parser.add_argument('-n', '--num_inputs', type=int, default=32)
-    parser.add_argument('-d', '--data_size', type=int, default=10_000)
+    parser.add_argument('-d', '--data_size', type=int, default=20_000)
     parser.add_argument('-m', '--max_number', type=int, default=2_000_000)
-    parser.add_argument('-l', '--layers', type=int, default=3)
+    parser.add_argument('-l', '--layers', type=int, default=4)
     # parser.add_argument('-l', '--layers', type=int, default=2)
-    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='MVG')
-    parser.add_argument('-i', '--iterations_fg', type=int, default=300)
-    parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=10)
-    parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=101)
-    # parser.add_argument('-w', '--width_multiplayer', type=int, default=1)
-    parser.add_argument('-w', '--width_multiplayer', type=int, default=4)
+    parser.add_argument('--learning_type', type=str, choices=['FG', 'MVG'], default='FG')
+    parser.add_argument('-i', '--iterations_fg', type=int, default=10_000)
+    parser.add_argument('-r', '--iterations_each_round_mvg', type=int, default=15)
+    parser.add_argument('-e', '--amount_of_rounds_mvg', type=int, default=61)
+    # parser.add_argument('-w', '--midth_multiplayer', type=int, default=1)
+    parser.add_argument('-w', '--width_multiplayer', type=int, default=3)
     return parser.parse_args()
-
-
-from keras.regularizers import l1
 
 
 def model_crate(num_inputs, layers, width_multiplayer=1, regularizer=None):
@@ -82,7 +77,7 @@ def model_crate(num_inputs, layers, width_multiplayer=1, regularizer=None):
     return model
 
 
-def convert_to_graph(model: Sequential):
+def convert_to_graph(model):
     """
     Convert a model to a NX graph
     :param model: sequential keras model
